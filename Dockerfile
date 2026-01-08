@@ -1,52 +1,59 @@
 # ====================
-# Backend Dockerfile
+# Backend Dockerfile (Secure / Production-friendly)
 # ====================
 
-# Stage 1: Build
+# -------- Stage 1: Build --------
 FROM maven:3.9-eclipse-temurin-21-alpine AS build
-
 WORKDIR /app
 
-# Copiar arquivos Maven
+# Copiar apenas o necessário para cache de dependências
 COPY pom.xml .
 COPY .mvn .mvn
 COPY mvnw .
 
+# Corrige permissão do mvnw (Windows -> Linux)
+RUN chmod +x mvnw
+
 # Baixar dependências (layer de cache)
-RUN ./mvnw dependency:go-offline -B
+RUN ./mvnw -B -q dependency:go-offline
 
 # Copiar código fonte
 COPY src ./src
 
 # Build do projeto (pula testes para acelerar)
-RUN ./mvnw clean package -DskipTests
+RUN ./mvnw -B -q clean package -DskipTests
 
-# Stage 2: Runtime
+
+# -------- Stage 2: Runtime --------
 FROM eclipse-temurin:21-jre-alpine
-
 WORKDIR /app
 
-# Criar diretório para uploads
-RUN mkdir -p /app/uploads && chmod 777 /app/uploads
+# wget para healthcheck
+RUN apk add --no-cache wget
 
-# Copiar JAR da stage de build
-COPY --from=build /app/target/*.jar app.jar
+# Criar usuário não-root (melhor prática)
+RUN addgroup -S app && adduser -S app -G app
 
-# Variáveis de ambiente padrão
-ENV SPRING_PROFILES_ACTIVE=prod \
-    DB_URL=jdbc:mysql://mysql:3306/beacon_navigator \
-    DB_USER=root \
-    DB_PASSWORD=root \
-    JWT_SECRET=CHANGE_ME_IN_PRODUCTION_min32chars_123456 \
-    JWT_EXP_MINUTES=120 \
-    PORT=8080
+# Diretório para uploads (com permissões seguras)
+RUN mkdir -p /app/uploads \
+  && chown -R app:app /app \
+  && chmod 755 /app/uploads
 
-# Expor porta
+# Copiar JAR gerado no build
+COPY --from=build /app/target/*.jar /app/app.jar
+
+# Porta padrão (a plataforma pode sobrescrever via variável PORT)
+ENV PORT=8080
+
+# Expor porta (informativo)
 EXPOSE 8080
 
-# Health check
+# Health check: requer actuator em /actuator/health
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT}/actuator/health || exit 1
 
-# Comando de execução
-ENTRYPOINT ["java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar"]
+# Rodar como usuário não-root
+USER app
+
+# Start: respeita PORT (muito importante em nuvem)
+ENTRYPOINT ["sh", "-c", "java -Dserver.port=${PORT} -Djava.security.egd=file:/dev/./urandom -jar /app/app.jar"]
