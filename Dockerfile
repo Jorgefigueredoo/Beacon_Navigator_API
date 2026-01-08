@@ -5,11 +5,22 @@ WORKDIR /app
 COPY pom.xml .
 COPY .mvn .mvn
 COPY mvnw .
+
+# Permissão pro wrapper
 RUN chmod +x mvnw
+
+# Cache de dependências
 RUN ./mvnw -B -q dependency:go-offline
 
+# Copia o projeto inteiro
 COPY . .
+
+# IMPORTANTE: o COPY acima pode sobrescrever o mvnw e perder permissão
+RUN chmod +x mvnw
+
+# Build
 RUN ./mvnw -B -q clean package -DskipTests
+
 
 # -------- Stage 2: Runtime --------
 FROM eclipse-temurin:21-jre-alpine
