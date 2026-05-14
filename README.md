@@ -2,7 +2,7 @@
 
 ## 📋 Sobre o Projeto
 
-O **Beacon Navigator** é uma API RESTful desenvolvida em Spring Boot para gerenciamento e navegação baseada em beacons. O sistema oferece funcionalidades completas de autenticação, autorização e operações CRUD, utilizando as melhores práticas de desenvolvimento e segurança.
+O **
 
 ## Sumário
 
